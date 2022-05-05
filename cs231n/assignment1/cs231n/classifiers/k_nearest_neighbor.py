@@ -104,13 +104,10 @@ class KNearestNeighbor(object):
             #######################################################################
             # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
             
-            # 1.将每一张测试图片X[i]构造成一个(5000, 3072)的大矩阵，和train矩阵同维度
-            # 其中每一行都是X[i]测试图片本身
-            test_array = np.ones((num_train, 1)) * X[i]   
-            # 2. 一经相减，矩阵的每一行就是测试图片X[i]与第row张train图像的差了
-            Diff_array = test_array - self.X_train
-            # 3. 从axis = 1，即对一行的差值的平方进行累加，会得到(5000,1)的向量，在此基础上做pixel-wise的开方，转置后放回dists原处
-            dists[i,:] = np.power(np.sum(np.power(Diff_array, 2), axis = 1), 1/2).T
+            # 1. 利用numpy的广播性质，用train矩阵直接减test的某一行，即可
+            Diff_array = self.X_train - X[i]
+            # 2. 从axis = 1，即对每一行平方求和(axis = 0是列)，会得到(5000,)的数组，在此基础上做pixel-wise的开方，最后放回dists原处
+            dists[i,:] = np.power(np.sum(np.power(Diff_array, 2), axis = 1), 1/2)
             
             
 
@@ -194,7 +191,7 @@ class KNearestNeighbor(object):
             #########################################################################
             # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
             
-            #  从刚刚得到的closest_y数组中得到投票最多的类，相同的话选小一点的label
+            #  从刚刚得到的closest_y数组中得到投票最多的类
             #  用dict来记录关键字及其出现次数
             dictCnt = {}
             maxCnt = 1
