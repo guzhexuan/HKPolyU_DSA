@@ -139,10 +139,18 @@ class KNearestNeighbor(object):
         #########################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         
-        # 1.第一步就是为test扩维，也就是广播
+        # (400,)   (5000,)
+        test_square = np.sum(np.square(X), axis = 1)
+        train_square = np.sum(np.square(self.X_train), axis = 1)
         
-
-        pass
+        # (400, 5000)
+        test_train_multi = -2 * np.dot(X, self.X_train.T)
+        
+        #
+        test_train_multi = test_train_multi + train_square + test_square.reshape(-1, 1)
+        dists = np.sqrt(test_train_multi)
+        
+        
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         return dists
@@ -176,11 +184,11 @@ class KNearestNeighbor(object):
             # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
             
             # 默认用argsort会将原矩阵按行，每一行从小到大排序，输出的矩阵将会按从小到大的元素下标
-            sort_distance = np.argsort(dists)
+            sort_distance = np.argsort(dists[i, :])
             for j in range(k):
-                closest_y.append(self.y_train[sort_distance[i, j]])
-            
-
+                # 直接的self.y_train[sort_distance[i, j]] 返回类型是numpy.ndarray dict无法直接对其添加
+                closest_y.append(self.y_train[sort_distance[j]])
+                
             # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
             #########################################################################
             # TODO:                                                                 #
@@ -195,6 +203,7 @@ class KNearestNeighbor(object):
             #  用dict来记录关键字及其出现次数
             dictCnt = {}
             maxCnt = 1
+            dictCnt[closest_y[0]] = 1
             Label = closest_y[0]
             for j in range(1, k):
                 if closest_y[j] in dictCnt:

@@ -80,7 +80,12 @@ class TwoLayerNet(object):
         #############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        # 输入层->隐层   (N， D) * （D，H） + bias-> （N， H）
+        hidden_scores = X.dot(W1) + b1
+        # 隐层调用ReLU激活函数
+        hidden_scores = np.maximum(0, hidden_scores)
+        # 隐层->输出层   （N，C）
+        scores = hidden_scores.dot(W2) + b2
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
@@ -98,7 +103,26 @@ class TwoLayerNet(object):
         #############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        # Softmax_Loss just like you what you have done before
+        # 1. 找出最大分数值
+        max_scores = np.max(scores, axis=1).reshape(-1, 1)
+        # 2. 正则化分数（即减去最大值，防止做指数运算时因为上界太高而导致上溢出）
+        scores -= max_scores
+        # 3. 指数化
+        exp_scores = np.exp(scores)
+        # 4. 各行求和
+        scores_sum = np.sum(exp_scores, axis=1).reshape(-1, 1)
+        # 5. 除以上面求出的和可以转换成各个分类的概率
+        probs_reg = np.true_divide(exp_scores, scores_sum)
+        # 6. 计算cross_entropy交叉熵损失
+        index = np.arange(N)
+        loss = np.sum(-np.log(probs_reg[index, y]))
+        # 7.损失做均值
+        loss /= N
+        # 8. 惩罚项系数 ---------要把所有权重系数都加上哦，对于多层的网络显然应该用循环来实现更符合实际
+        loss += reg * (np.sum(W2 * W2) + np.sum(W1 * W1))
+        
+        
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
@@ -110,8 +134,22 @@ class TwoLayerNet(object):
         # grads['W1'] should store the gradient on W1, and be a matrix of same size #
         #############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-
-        pass
+        one_hot = np.zeros_like(scores)
+        one_hot[index, y] = 1
+        dscores = probs_reg - one_hot
+        grads['W2'] = np.dot(hidden_scores.T, dscores) / N + reg * W2 * 2
+        grads['b2'] = np.sum(dscores, axis=0) / N
+        
+        # 激活函数ReLU后的输出的梯度矩阵   
+        dhiddenlayer_after_ReLU = np.dot(dscores, W2.T)
+        # 计算激活前的梯度矩阵
+        dReLU = np.int64(hidden_scores > 0)
+        dhiddenlayer_before_ReLU = dReLU * dhiddenlayer_after_ReLU
+        
+        # 对W1求导
+        grads['W1'] = np.dot(X.T, dhiddenlayer_before_ReLU) / N + reg * W1 * 2
+        
+        grads['b1'] = np.sum(dhiddenlayer_before_ReLU, axis=0) / N
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
@@ -156,7 +194,9 @@ class TwoLayerNet(object):
             #########################################################################
             # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-            pass
+            random_index = np.random.randint(num_train, size=batch_size)
+            X_batch = X[random_index]
+            y_batch = y[random_index]
 
             # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
@@ -172,7 +212,10 @@ class TwoLayerNet(object):
             #########################################################################
             # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-            pass
+            self.params['W1'] -= learning_rate * grads['W1']
+            self.params['W2'] -= learning_rate * grads['W2']
+            self.params['b1'] -= learning_rate * grads['b1']
+            self.params['b2'] -= learning_rate * grads['b2']
 
             # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
@@ -217,8 +260,9 @@ class TwoLayerNet(object):
         # TODO: Implement this function; it should be VERY simple!                #
         ###########################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-
-        pass
+        
+        scores = np.dot(np.maximum(np.dot(X, self.params['W1']) + self.params['b1'], 0), self.params['W2']) + self.params['b2']
+        y_pred = np.argmax(scores, axis=1)
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
