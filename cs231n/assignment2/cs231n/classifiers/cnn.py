@@ -55,7 +55,31 @@ class ThreeLayerConvNet(object):
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        # 1. 构造的W，也就是滤波核参数应该符合的形状是 W1:（Filter_NUM, Channel, Filter_Height, Filter_Width）  b1(Filter_Num,)
+        self.params['b1'] = np.zeros(num_filters)
+        # 此API可以生成符合高斯分布的参数，loc代表均值，scale代表标准差
+        self.params['W1'] = np.random.normal(loc=0.0, scale=weight_scale, size=(num_filters, input_dim[0], filter_size, filter_size))
+        
+        # 经过第一层卷积，输出的应该是(N, numfilter, out_height, out_width)   ----> 其中N代表了训练MiniBatch的图片数量
+        # 看提示，提示说明了，第一层卷积后我们可以默认为shape是preserved的，因此无需手算out的shape
+        self.params['b2'] = np.zeros(hidden_dim)
+        self.params['W2'] = np.random.normal(loc=0.0, scale=weight_scale, size=(num_filters * input_dim[1] * input_dim[2] // 4, hidden_dim))
+        
+        # 最后一层是全连接层
+        self.params['b3'] = np.zeros(num_classes)
+        self.params['W3'] = np.random.normal(loc=0.0, scale=weight_scale, size=(hidden_dim, num_classes))
+        
+        
+        '''
+        参数W2：实际上是第一次卷积输出后---大小为（Train_Num, Filter_Num, out_height, out_width），stretch成二维（Train_Num, NUM）。
+        然后就回到了神经网络的知识，矩阵相乘即可。
+        因此，这设置权值矩阵时，为了满足点乘规则即：X * W，W的大小需要为（NUM， hidden_dim）。所以知道确切的NUM的大小很重要！！！
+        
+        参数W2的设置遇到了问题，就是在第一次conv之后（根据提示不改变大小，即还是32*32），同时ReLU固然不改变大小。
+        但是maxpool会改变大小啊，这里initialize的过程却又不给出max-pool相关参数，难以得知pooling操作后的size，那就没法设置W2大小啊？？
+        
+        我这里目前是根据先看了一下loss里的pooling参数，得知了会使得缩小4倍，因此直接在W2定义时整除了4！！
+        '''
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -95,7 +119,14 @@ class ThreeLayerConvNet(object):
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        # 完成前向传播，利用init前的网络结构，copy到这儿：(去利用layers、fast_layers、layer_utils中已经实现的结构！！！)
+        # -------------(思来想去还是尽量别去layers引用自己的naive算法，那真的很慢【如果你的实现和fast速度相差无几，我这就是屁话！】)--------------
+        # conv - relu - 2x2 max pool - affine - relu - affine - softmax
+        out, cache = conv_relu_pool_forward(X, self.params['W1'], self.params['b1'], conv_param, pool_param)
+        out1, cache1 = affine_relu_forward(out, self.params['W2'], self.params['b2'])
+        scores, cache2 = affine_forward(out1, self.params['W3'], self.params['b3'])
+        
+        
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -118,7 +149,20 @@ class ThreeLayerConvNet(object):
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        loss, dscores = softmax_loss(scores, y)
+        loss = loss + self.reg * (np.sum(np.square(self.params['W1'])) + np.sum(np.square(self.params['W2'])) + np.sum(np.square(self.params['W3'])))
+        
+        dout, dW3, db3 = affine_backward(dscores, cache2)
+        grads['W3'] = dW3 + self.params['W3'] * self.reg
+        grads['b3'] = db3
+        
+        dout, dW2, db2 = affine_relu_backward(dout, cache1)
+        grads['W2'] = dW2 + self.params['W2'] * self.reg
+        grads['b2'] = db2
+        
+        dout, dW1, db1 = conv_relu_pool_backward(dout, cache)
+        grads['W1'] = dW1 + self.params['W1'] * self.reg
+        grads['b1'] = db1
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################

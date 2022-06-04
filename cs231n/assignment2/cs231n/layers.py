@@ -27,7 +27,9 @@ def affine_forward(x, w, b):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    # 根据提示，这是一个仿射变换，需要首先将输入转换成一维的向量
+    xflat = x.reshape(x.shape[0], -1)   
+    out = xflat.dot(w) + b
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -59,8 +61,12 @@ def affine_backward(dout, cache):
     # TODO: Implement the affine backward pass.                               #
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-
-    pass
+    
+    # 用矩阵的形状来判定这种简单的求导会更加容易，无需手动去推导
+    X = x.reshape(x.shape[0], -1)
+    dx = (dout.dot(w.T)).reshape(x.shape)
+    dw = (X.T).dot(dout)
+    db = np.sum(dout, axis=0)
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -86,7 +92,9 @@ def relu_forward(x):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    # 1. ReLU操作，足够简单。。。
+    out = x.copy()
+    out[x < 0] = 0
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -113,7 +121,10 @@ def relu_backward(dout, cache):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    dx = np.zeros_like(x)
+    dx[x > 0] = 1
+    # 因为ReLU是一个element-wise的操作，所以梯度就是对应乘积即可
+    dx *= dout
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -504,7 +515,60 @@ def conv_forward_naive(x, w, b, conv_param):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    # 1. 先提取出必要的参数
+    num = x.shape[0]
+    channel = x.shape[1]
+    height = x.shape[2]
+    width = x.shape[3]
+    
+    filter_num = w.shape[0]
+    filter_channel = w.shape[1]
+    filter_height = w.shape[2]
+    filter_width = w.shape[3]
+    
+    # print(filter_height, filter_width)
+    
+    padding = conv_param["pad"]
+    stride = conv_param["stride"]
+    
+    # 2. 根据参数padding进行填充
+    # 第二个参数可以理解为补零的位置信息，在第一维和第二维我们都不需要填充，因此都为0，后面两维表征了一张图像，因此对其进行填充
+    # 位置信息是一对值，可以理解为：横向和纵向 填充宽度。 最后一个就是填充一个常数0
+    x_padding = np.pad(x, ((0, 0), (0, 0), (padding, padding), (padding, padding)), 'constant', constant_values=0)
+    pad_height = height + 2 * padding
+    pad_width = width + 2 * padding
+    
+    # 3. 根据参数信息可以直接知道out的形状
+    out_height = int((height + padding * 2 - filter_height) / stride + 1)
+    out_width = int((width + padding * 2 - filter_width) / stride + 1)
+    out = np.zeros((num, filter_num, out_height, out_width))
+    
+    #  print(out.shape)        # after debugging, it's verified
+    
+    # All the following print functions are simply for debugging, and all of them have been verified in main function in ConvolutionNetworks.ipynb file
+    
+    # 4. 卷积，并且将得到的值填充至out的相应位置
+    for images in range(num):    # 每次取一张图片
+        for filters in range(filter_num):    # 每次取一个滤波器
+            # 将一个滤波器张成一个长一维向量
+            current_filter = w[filters, :, :, :]
+            flatten_filter = current_filter.flatten().reshape(-1, 1)   # 形状应该是 （C * HH * WW， 1）
+            bias = b[filters]
+            width_ptr = 0
+            height_ptr = 0
+            # print(pad_width, filter_width)
+            for i in range(0, pad_height - filter_height + 1, stride):
+                for j in range(0, pad_width - filter_width + 1, stride):
+                    # print(i, j, width_ptr, height_ptr)
+                    # 从图像中截取一个local域出来
+                    local_image = x_padding[images, :, i:i+filter_height, j:j+filter_width]
+                    flatten_image = local_image.flatten()       # 形状应该是（C * HH * WW，）
+                    conv_result = flatten_image.dot(flatten_filter) + bias
+                    # print(conv_result)
+                    out[images, filters, height_ptr, width_ptr] = conv_result
+                    width_ptr += 1
+                width_ptr = 0
+                height_ptr += 1
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -532,9 +596,72 @@ def conv_backward_naive(dout, cache):
     # TODO: Implement the convolutional backward pass.                        #
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+    
+    # 1. 先从cache中解析出必要使用的参数信息
+    x, w, b, conv_param = cache[0], cache[1], cache[2], cache[3]
+    num = x.shape[0]
+    channel = x.shape[1]
+    height = x.shape[2]
+    width = x.shape[3]
+    
+    filter_num = w.shape[0]
+    filter_channel = w.shape[1]
+    filter_height = w.shape[2]
+    filter_width = w.shape[3]
+    
+    padding = conv_param["pad"]
+    stride = conv_param["stride"]
+    
+    # 其中out_num = num, out_depth = filter_num, out_width = (width + 2 * padding - filter_width) / stride + 1, out_height与width同理
+    # out_num, out_depth, out_height, out_width = dout.shape[0], dout.shape[1], dout.shape[2], dout.shape[3]
+    out_height, out_width = dout.shape[2], dout.shape[3]
+    
+    # 2. 将x做一个padding，因为求导会用到这些边界信息
+    x_padding = np.pad(x, ((0, 0), (0, 0), (padding, padding), (padding, padding)), 'constant', constant_values=0)
+    pad_height = height + 2 * padding
+    pad_width = width + 2 * padding
+    
+    # 3. 将导数变量先全部赋好相应shape，以备后用
+    dw = np.zeros_like(w)
+    dx = np.zeros_like(x)
+    db = np.zeros_like(b)
+    dxpad = np.zeros_like(x_padding)
+    
+    # 4. 每一张图像的一块local域求导得到的应该就是对应的filter
+    for train_num in range(num):
+        for filters in range(filter_num):
+            width_ptr = 0
+            height_ptr = 0
+            for i in range(0, pad_height - filter_height + 1, stride):
+                for j in range(0, pad_width - filter_width + 1, stride):
+                    out_derivative = dout[train_num, filters, height_ptr, width_ptr]
+                    dxpad[train_num, :, i:i+filter_height, j:j+filter_width] += (out_derivative * w[filters, :, :, :])
+                    width_ptr += 1
+                width_ptr = 0
+                height_ptr += 1
+    # Hint: 先通过求解扩张后的输入的导数（不会发生越界现象），然后最后截取即可
+    dx = dxpad[:, :, padding:pad_height - padding, padding:pad_width - padding]
 
-    pass
-
+    # 5. 由于我们每次都是将filter和local_image stretch成一维长向量之后做点积，所以对于一个filter，某一次的dw就是当时在卷积的那块local域张成的向量
+    for filters in range(filter_num):
+        for train_num in range(num):
+            width_ptr = 0
+            height_ptr = 0
+            for i in range(0, pad_height - filter_height + 1, stride):
+                for j in range(0, pad_width - filter_width + 1, stride):
+                    out_derivative = dout[train_num, filters, height_ptr, width_ptr]
+                    dw[filters, :, :, :] += (out_derivative * x_padding[train_num, :, i:i+filter_height, j:j+filter_width])
+                    width_ptr += 1
+                width_ptr = 0
+                height_ptr += 1
+        #dw[filters, :, :, :] /= (out_width * out_height * num)
+        #print(dw)
+    
+    # 6. 求偏置项的导数
+    for filters in range(filter_num):
+        for train_num in range(num):
+            db[filters] += np.sum(dout[train_num, filters, :, :])
+    
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
     #                             END OF YOUR CODE                            #
@@ -567,8 +694,27 @@ def max_pool_forward_naive(x, pool_param):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
-
+    # 1.先解析出必要的参数
+    N, C, H, W = x.shape[0], x.shape[1], x.shape[2], x.shape[3]
+    pool_height, pool_width, stride = pool_param["pool_height"], pool_param["pool_width"], pool_param["stride"]
+    
+    # 2. 为输出先赋好形状
+    out_height = int((H - pool_height) / stride + 1)
+    out_width = int((W - pool_width) / stride + 1)
+    out = np.zeros((N, C, out_height, out_width))
+    
+    # 3.maxpool其实就是一种downsample，就是在x中取一块maxpool大小的local局部块，取最大
+    width_ptr = 0
+    height_ptr = 0
+    for i in range(0, H - pool_height + 1, stride):
+        for j in range(0, W - pool_width + 1, stride):
+            # 做两次最大值能取出局部域中最大的（因为局部域是个二维的，所以做两次操作）
+            feature = np.max(np.max(x[:, :, i:i+pool_height, j:j+pool_width], axis=2), axis=2)
+            out[:, :, height_ptr, width_ptr] = feature
+            width_ptr += 1
+        width_ptr = 0
+        height_ptr += 1
+    # print(out)
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
     #                             END OF YOUR CODE                            #
@@ -594,8 +740,34 @@ def max_pool_backward_naive(dout, cache):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
-
+    # 1. 解析必要用到的参数
+    x, pool_param = cache[0], cache[1]
+    train_num, depth = x.shape[0], x.shape[1]
+    H, W = x.shape[2], x.shape[3]
+    pool_height, pool_width, stride = pool_param["pool_height"], pool_param["pool_width"], pool_param["stride"]
+    
+    out_height, out_width = dout.shape[2], dout.shape[3]
+    
+    # 2. 为输出的梯度矩阵dx赋好形状
+    dx = np.zeros_like(x)
+    
+    # 3. 由于是在局部域中取最大值，所以仅对被取到的最大值存在导数1,其余均为0
+    for num in range(train_num):
+        for d in range(depth):
+            width_ptr = 0
+            height_ptr = 0
+            for i in range(0, H - pool_height + 1, stride):
+                for j in range(0, W - pool_width + 1, stride):
+                    # 做两次最大值能取出局部域中最大的（因为局部域是个二维的，所以做两次操作）
+                    doutval = dout[num, d, height_ptr, width_ptr]
+                    local = x[num, d, i:i+pool_height, j:j+pool_width]
+                    loc = np.unravel_index(np.argmax(local), local.shape)
+                    # argmax出来的位置是相对于loca域而言的，实际操作后我们仍需要定位到全局，因此仍旧要加上i和j
+                    dx[num, d, i + loc[0], j + loc[1]] += doutval
+                    width_ptr += 1
+                width_ptr = 0
+                height_ptr += 1
+    # print(dx)
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
     #                             END OF YOUR CODE                            #

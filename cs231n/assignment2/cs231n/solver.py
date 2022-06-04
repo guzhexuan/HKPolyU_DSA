@@ -145,6 +145,7 @@ class Solver(object):
         self.update_rule = getattr(optim, self.update_rule)
 
         self._reset()
+        
 
 
     def _reset(self):
@@ -165,7 +166,6 @@ class Solver(object):
         for p in self.model.params:
             d = {k: v for k, v in self.optim_config.items()}
             self.optim_configs[p] = d
-
 
     def _step(self):
         """
@@ -229,7 +229,6 @@ class Solver(object):
         - acc: Scalar giving the fraction of instances that were correctly
           classified by the model.
         """
-
         # Maybe subsample the data
         N = X.shape[0]
         if num_samples is not None and N > num_samples:
@@ -269,6 +268,7 @@ class Solver(object):
             if self.verbose and t % self.print_every == 0:
                 print('(Iteration %d / %d) loss: %f' % (
                        t + 1, num_iterations, self.loss_history[-1]))
+            
 
             # At the end of every epoch, increment the epoch counter and decay
             # the learning rate.

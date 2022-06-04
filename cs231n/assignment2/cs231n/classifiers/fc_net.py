@@ -49,7 +49,10 @@ class TwoLayerNet(object):
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        self.params['W1'] = np.random.normal(loc=0.0, scale=weight_scale, size=(input_dim, hidden_dim))
+        self.params['b1'] = np.zeros(hidden_dim)
+        self.params['W2'] = np.random.normal(loc=0.0, scale=weight_scale, size=(hidden_dim, num_classes))
+        self.params['b2'] = np.zeros(num_classes)
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -83,7 +86,8 @@ class TwoLayerNet(object):
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        hidden_output = np.dot(X, self.params['W1']) + self.params['b1']
+        scores = np.dot(hidden_output, self.params['W2']) + self.params['b2']
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -106,8 +110,17 @@ class TwoLayerNet(object):
         # of 0.5 to simplify the expression for the gradient.                      #
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-
-        pass
+        
+        # dscores:(N,C)
+        # W1:(D, hidden_dim)   b1(hidden_dim)    W2(hidden_dim, num_classes)  b2(num_classes,)
+        # X:(N, D)         hidden_output(N, hidden_dim)
+        loss, dscores = softmax_loss(scores, y)
+        loss += 0.5 * self.reg * (np.sum(np.square(self.params['W1'])) + np.sum(np.square(self.params['W2'])))
+        dhidden_output = dscores.dot(self.params['W2'].T)
+        grads['W1'] = (X.T).dot(dhidden_output) + self.params['W1'] * self.reg
+        grads['b1'] = np.sum(dhidden_output, axis=0)
+        grads['W2'] = (hidden_output.T).dot(dscores) + self.params['W2'] * self.reg
+        grads['b2'] = np.sum(dscores, axis=0)
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
