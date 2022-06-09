@@ -85,8 +85,9 @@ class TwoLayerNet(object):
         # class scores for X and storing them in the scores variable.              #
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-
-        hidden_output = np.dot(X, self.params['W1']) + self.params['b1']
+        
+        in_X = X.reshape(X.shape[0], -1)
+        hidden_output = np.dot(in_X, self.params['W1']) + self.params['b1']
         scores = np.dot(hidden_output, self.params['W2']) + self.params['b2']
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
@@ -116,8 +117,9 @@ class TwoLayerNet(object):
         # X:(N, D)         hidden_output(N, hidden_dim)
         loss, dscores = softmax_loss(scores, y)
         loss += 0.5 * self.reg * (np.sum(np.square(self.params['W1'])) + np.sum(np.square(self.params['W2'])))
+        
         dhidden_output = dscores.dot(self.params['W2'].T)
-        grads['W1'] = (X.T).dot(dhidden_output) + self.params['W1'] * self.reg
+        grads['W1'] = (in_X.T).dot(dhidden_output) + self.params['W1'] * self.reg
         grads['b1'] = np.sum(dhidden_output, axis=0)
         grads['W2'] = (hidden_output.T).dot(dscores) + self.params['W2'] * self.reg
         grads['b2'] = np.sum(dscores, axis=0)
@@ -191,8 +193,22 @@ class FullyConnectedNet(object):
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
-
+        for layer in range (self.num_layers - 1):
+            hidden_dim = hidden_dims[layer]
+            if layer == 0:
+                self.params['W' + str(layer + 1)] = np.random.normal(loc=0.0, scale=weight_scale, size=(input_dim, hidden_dim))
+            else:
+                self.params['W' + str(layer + 1)] = np.random.normal(loc=0.0, scale=weight_scale, size=(hidden_dims[layer-1], hidden_dim))
+            self.params['b' + str(layer + 1)] = np.zeros(hidden_dim)
+            if self.normalization == "batchnorm":
+                self.params['gamma' + str(layer + 1)] = np.ones(hidden_dim)
+                self.params['beta' + str(layer + 1)] = np.zeros(hidden_dim)
+         # 最后还有一个输出层，前面的循环只对隐层进行了初始化
+        hidden_dim = hidden_dims[self.num_layers - 2]
+        self.params['W' + str(self.num_layers)] = np.random.normal(loc=0.0, scale=weight_scale, size=(hidden_dim, num_classes))
+        self.params['b' + str(self.num_layers)] = np.zeros(num_classes)
+        
+        
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
         #                             END OF YOUR CODE                             #
@@ -253,8 +269,29 @@ class FullyConnectedNet(object):
         # layer, etc.                                                              #
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-
-        pass
+        
+        PreNetinput = X
+        cache_list = []
+        for layer in range(self.num_layers):
+            # 先矩阵相乘做前向传播
+            out, cache = affine_forward(PreNetinput, self.params['W' + str(layer + 1)], self.params['b' + str(layer + 1)])
+            cache_list.append(cache)
+            # 最后一层输出层不做norm或者relu或者dropout
+            if layer != self.num_layers - 1:
+                # 然后测试batchnormalizetion
+                if self.normalization == "batchnorm":
+                    gamma = self.params['gamma' + str(layer + 1)]
+                    beta = self.params['beta' + str(layer + 1)]
+                    out, cache = batchnorm_forward(out, gamma, beta, self.bn_params[layer])
+                    cache_list.append(cache)
+                if self.normalization == "layernorm":
+                    pass
+                out, cache = relu_forward(out)
+                cache_list.append(cache)
+                if self.use_dropout:
+                    pass
+            PreNetinput = out
+        scores = out
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -281,7 +318,30 @@ class FullyConnectedNet(object):
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        loss, dscores = softmax_loss(scores, y)
+        for layer in range(self.num_layers):
+            loss += self.reg * np.sum(np.square(self.params['W' + str(layer + 1)]))
+        
+        dupstream = None
+        for layer in range(self.num_layers, 0, -1):
+            cache = cache_list.pop()
+            if layer == self.num_layers:
+                dupstream, grads['W' + str(layer)], grads['b' + str(layer)] = affine_backward(dscores, cache)
+            else:
+                if self.use_dropout:
+                    pass
+                dupstream = relu_backward(dupstream, cache)
+                cache = cache_list.pop()
+                if self.normalization == "batchnorm":
+                    dupstream, grads['gamma' + str(layer)], grads['beta' + str(layer)] = batchnorm_backward(dupstream, cache)
+                    cache = cache_list.pop()
+                if self.normalization == "layernorm":
+                    pass
+                dupstream, grads['W' + str(layer)], grads['b' + str(layer)] = affine_backward(dupstream, cache)
+            # 这里我发现被坑了，虽然HINT里说为L2正则惩罚项求导时乘以一个0.5来简化，但是事实是根本过不了测试
+            # 然后我重新把2补了回去，又好了。。。
+            grads['W' + str(layer)] += self.reg * self.params['W' + str(layer)] * 2
+            
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
