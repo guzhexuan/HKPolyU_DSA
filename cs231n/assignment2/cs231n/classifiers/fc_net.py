@@ -200,7 +200,7 @@ class FullyConnectedNet(object):
             else:
                 self.params['W' + str(layer + 1)] = np.random.normal(loc=0.0, scale=weight_scale, size=(hidden_dims[layer-1], hidden_dim))
             self.params['b' + str(layer + 1)] = np.zeros(hidden_dim)
-            if self.normalization == "batchnorm":
+            if self.normalization == "batchnorm" or self.normalization == "layernorm":
                 self.params['gamma' + str(layer + 1)] = np.ones(hidden_dim)
                 self.params['beta' + str(layer + 1)] = np.zeros(hidden_dim)
          # 最后还有一个输出层，前面的循环只对隐层进行了初始化
@@ -285,11 +285,15 @@ class FullyConnectedNet(object):
                     out, cache = batchnorm_forward(out, gamma, beta, self.bn_params[layer])
                     cache_list.append(cache)
                 if self.normalization == "layernorm":
-                    pass
+                    gamma = self.params['gamma' + str(layer + 1)]
+                    beta = self.params['beta' + str(layer + 1)]
+                    out, cache = layernorm_forward(out, gamma, beta, self.bn_params[layer])
+                    cache_list.append(cache)
                 out, cache = relu_forward(out)
                 cache_list.append(cache)
                 if self.use_dropout:
-                    pass
+                    out, cache = dropout_forward(out, self.dropout_param)
+                    cache_list.append(cache)
             PreNetinput = out
         scores = out
 
@@ -329,14 +333,16 @@ class FullyConnectedNet(object):
                 dupstream, grads['W' + str(layer)], grads['b' + str(layer)] = affine_backward(dscores, cache)
             else:
                 if self.use_dropout:
-                    pass
+                    dupstream = dropout_backward(dupstream, cache)
+                    cache = cache_list.pop()
                 dupstream = relu_backward(dupstream, cache)
                 cache = cache_list.pop()
                 if self.normalization == "batchnorm":
                     dupstream, grads['gamma' + str(layer)], grads['beta' + str(layer)] = batchnorm_backward(dupstream, cache)
                     cache = cache_list.pop()
                 if self.normalization == "layernorm":
-                    pass
+                    dupstream, grads['gamma' + str(layer)], grads['beta' + str(layer)] = layernorm_backward(dupstream, cache)
+                    cache = cache_list.pop()
                 dupstream, grads['W' + str(layer)], grads['b' + str(layer)] = affine_backward(dupstream, cache)
             # 这里我发现被坑了，虽然HINT里说为L2正则惩罚项求导时乘以一个0.5来简化，但是事实是根本过不了测试
             # 然后我重新把2补了回去，又好了。。。
