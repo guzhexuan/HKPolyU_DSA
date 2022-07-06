@@ -14,6 +14,8 @@ class CaptioningRNN(object):
     The RNN receives input vectors of size D, has a vocab size of V, works on
     sequences of length T, has an RNN hidden dimension of H, uses word vectors
     of dimension W, and operates on minibatches of size N.
+    
+    -----------------用于Image Captioning，因此一个vocab可以当做一个“词袋”，里面包含了诸如dog、cat等词汇。-----------------
 
     Note that we don't use any regularization for the CaptioningRNN.
     """
@@ -26,9 +28,9 @@ class CaptioningRNN(object):
         Inputs:
         - word_to_idx: A dictionary giving the vocabulary. It contains V entries,
           and maps each string to a unique integer in the range [0, V).
-        - input_dim: Dimension D of input image feature vectors.
-        - wordvec_dim: Dimension W of word vectors.
-        - hidden_dim: Dimension H for the hidden state of the RNN.
+        - input_dim: Dimension D of input image feature vectors.          # 图像特征的维度，即输入层的shape应该为(N, D)
+        - wordvec_dim: Dimension W of word vectors.                   # 相当于用word_embedding 将一个integer作为W维的one-hot编码
+        - hidden_dim: Dimension H for the hidden state of the RNN.         # 隐层的维度，一个隐层cell的shape就应该是(N, H)
         - cell_type: What type of RNN to use; either 'rnn' or 'lstm'.
         - dtype: numpy datatype to use; use float32 for training and float64 for
           numeric gradient checking.
@@ -141,8 +143,48 @@ class CaptioningRNN(object):
         # in your implementation, if needed.                                       #
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-
-        pass
+        
+        # 注意提示，除了rnn_layers的内容，在Assignment2里实现的layers.py的内容也得努力使用起来
+        
+        # 1.初始隐层状态为输入的图像特征经过变换得到
+        inithidden, cache1 = affine_forward(features, W_proj, b_proj)
+        
+        # 2.通过word_embeddding将caption转为one-hot编码形式
+        out, cache2 = word_embedding_forward(captions_in, W_embed)
+        
+        # 3.网络前向传播：需确定是rnn还是lstm
+        if self.cell_type == 'rnn':
+            h, cache3 = rnn_forward(out, inithidden, Wx, Wh, b)
+        if self.cell_type == 'lstm':
+            h, cache3 = lstm_forward(out, inithidden, Wx, Wh, b)
+        
+        # 4. 针对隐层每一个时间点都算一个分数
+        scores, cache4 = temporal_affine_forward(h, W_vocab, b_vocab)
+        
+        # 5.根据得分计算softmax_loss
+        loss, dx = temporal_softmax_loss(scores, captions_out, mask, False)
+        
+        # 根据得分来求hidden->vocab的导数以及对隐层的导数
+        dx, dW_vocab, db_vocab = temporal_affine_backward(dx, cache4)
+        grads['W_vocab'], grads['b_vocab'] = dW_vocab, db_vocab
+        
+        # 网络反向传播
+        if self.cell_type == 'rnn':
+            dx, dh0, dWx, dWh, db = rnn_backward(dx, cache3)
+            grads['Wx'], grads['Wh'], grads['b'] = dWx, dWh, db
+        if self.cell_type == 'lstm':
+            dx, dh0, dWx, dWh, db = lstm_backward(dx, cache3)
+            grads['Wx'], grads['Wh'], grads['b'] = dWx, dWh, db
+        
+        # 根据word_embed求导
+        dW = word_embedding_backward(dx, cache2)
+        grads['W_embed'] = dW
+        
+        # 根据初始隐层导数，求导features->hidden步骤相应参数
+        dx, dW, db = affine_backward(dh0, cache1)
+        grads['W_proj'], grads['b_proj'] = dW, db
+        
+        
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -211,7 +253,33 @@ class CaptioningRNN(object):
         ###########################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        prev_h, cache1 = affine_forward(features, W_proj, b_proj)
+        V = len(self.word_to_idx)
+        current_word = np.zeros((N, V))
+        current_word[:, self._start] = 1
+        current_word = current_word.dot(W_embed)
+        
+        prev_c = np.zeros_like(prev_h)
+        
+        for timestep in range(max_length):
+            if self.cell_type == 'rnn':
+                # 单步时间前向传播
+                out, cache = rnn_step_forward(current_word, prev_h, Wx, Wh, b)
+            if self.cell_type == 'lstm':
+                out, next_c, cache = lstm_step_forward(current_word, prev_h, prev_c, Wx, Wh, b)
+                prev_c = next_c
+            # 隐层输出并作为下一次的word
+            prev_h = out
+            outcap = out.dot(W_vocab) + b_vocab
+            wordidx = np.argmax(outcap, axis=1)
+            # 构造下一轮的输入
+            current_word = np.zeros((N, V))
+            current_word[:, wordidx] = 1
+            current_word = current_word.dot(W_embed)
+            # 将每一步的预测值记入caption中
+            captions[:, timestep] = wordidx
+            
+            
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################

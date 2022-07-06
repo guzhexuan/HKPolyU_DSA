@@ -146,7 +146,7 @@ class CaptioningSolver(object):
                       batch_size=self.batch_size,
                       split='train')
         captions, features, urls = minibatch
-
+        
         # Compute loss and gradient
         loss, grads = self.model.loss(features, captions)
         self.loss_history.append(loss)
